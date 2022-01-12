@@ -133,7 +133,7 @@ void panic(char *s)
 void printfinit(void)
 {
   initlock(&pr.lock, "pr");
-  pr.locking = 1;
+  pr.locking = 1; 
 }
 
 void backtrace()
@@ -144,9 +144,9 @@ void backtrace()
   printf("backtrace:\n");
   while ((uint64)fp != up)
   {
-    ra = (uint64 *)((uint64)fp - 8);
     fp = (uint64 *)((uint64)fp - 16);
-    printf("%p\n", *ra);
+    ra = (uint64 *)((uint64)fp - 8);
+    printf("%p\n",*ra);
     fp = (uint64 *)*fp;
   }
 }
