@@ -100,20 +100,17 @@ sys_uptime(void)
 uint64
 sys_sigalarm(void)
 {
-  struct proc* p = myproc();
-  int n = 0;
-  uint64 handle_func;
-  if(argint(0,&n) < 0) {
-     return -1;
-  }
-  if(argaddr(1,&handle_func) < 0) {
+  struct proc *p = myproc();
+  int n;
+  uint64 handler;
+  if (argint(0, &n) < 0)
     return -1;
-  }
-  if(n <= 0 || handle_func == 0) {
+  if (argaddr(1, &handler) < 0)
     return -1;
-  }
+  if(n <= 0 || handler == 0)
+    return -1;
   p->interval = n;
-  p->handler = handle_func;
+  p->handler = handler;
   return 0;
 }
 
