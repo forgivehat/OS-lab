@@ -65,7 +65,11 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if(r_scause() == 13 || r_scause() == 15) {
+    uint64 pg_fault_va = r_stval();
+      if(lazy_alloc(pg_fault_va) < 0) 
+        p->killed = 1;
+  }  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -81,6 +85,27 @@ usertrap(void)
     yield();
 
   usertrapret();
+}
+
+int
+lazy_alloc(uint64 pg_fault_va)
+{
+  struct proc* p = myproc();
+  uint64 newsz = p->sz;
+    if(pg_fault_va >= newsz) 
+      return -1;
+    if(pg_fault_va < p->trapframe->sp)
+        return -1;
+    uint64 align_va = PGROUNDDOWN(pg_fault_va);
+    char *mem = kalloc();
+    if(mem == 0) 
+      return -1;
+    memset(mem,0,PGSIZE);
+    if(mappages(p->pagetable, align_va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+      kfree(mem);
+      return -1;
+    }
+    return 0;
 }
 
 //
