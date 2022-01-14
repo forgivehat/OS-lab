@@ -67,20 +67,7 @@ void usertrap(void)
   else if ((which_dev = devintr()) != 0)
   {
     // ok
-    if (which_dev == 2 && p->waitReturn == 0)
-    {
-      if (p->interval != 0)
-      {
-        p->tick_cnt += 1;
-        if (p->tick_cnt == p->interval)
-        {
-          *p->trapframeSave = *p->trapframe;
-          p->tick_cnt = 0;
-          p->trapframe->epc = (uint64)p->handler;
-          p->waitReturn = 1;
-        }
-      }
-    }
+   
   }
   else
   {
@@ -93,8 +80,18 @@ void usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if (which_dev == 2)
-    yield();
+  if (which_dev == 2){
+    if(p->tick_cnt < p->interval || p->wait_return == 1) {
+      p->tick_cnt++;
+    } else {
+      p->tick_cnt = 0;
+      *p->trapframe_saved = *p->trapframe;
+      p->wait_return = 1;
+      p->trapframe->epc = p->handler;
+    }
+  yield();
+  }
+   
 
   usertrapret();
 }

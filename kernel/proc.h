@@ -105,8 +105,8 @@ struct proc {
   char name[16];               // Process name (debugging)
   
   uint64 interval;
-  void (*handler)();
+  uint64 handler;
   uint64 tick_cnt;
-  struct trapframe *trapframeSave;
-  int waitReturn;
+  struct trapframe *trapframe_saved;
+  int wait_return;
 };
