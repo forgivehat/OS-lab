@@ -29,6 +29,7 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -43,6 +44,8 @@ usertrap(void)
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
+  //内核代码在执行时也可能会触发trap，因此要将stvec设置为kernelvec，
+  //当处于内核态且有trap发生时，由kernelvec和kerneltrap负责处理。
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
@@ -94,11 +97,12 @@ lazy_alloc(uint64 pg_fault_va)
   uint64 newsz = p->sz;
     if(pg_fault_va >= newsz) 
       return -1;
+   //xv6栈向下增长，栈顶指针sp下方是guard page
     if(pg_fault_va < p->trapframe->sp)
         return -1;
     uint64 align_va = PGROUNDDOWN(pg_fault_va);
-    char *mem = kalloc();
-    if(mem == 0) 
+    char *mem;
+    if((mem = kalloc())== 0) 
       return -1;
     memset(mem,0,PGSIZE);
     if(mappages(p->pagetable, align_va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
