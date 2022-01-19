@@ -15,6 +15,7 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+extern uint page_ref_cnt[];
 /*
  * create a direct-map page table for the kernel.
  */
@@ -157,8 +158,11 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
     if(*pte & PTE_V)
-      panic("remap");
+     panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
+     if(pa >= KERNBASE) {
+      page_ref_cnt[((uint64)pa - KERNBASE) / PGSIZE] += 1;
+    }   
     if(a == last)
       break;
     a += PGSIZE;
@@ -170,25 +174,33 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
-void
-uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
+void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
   uint64 a;
   pte_t *pte;
 
-  if((va % PGSIZE) != 0)
+  if ((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
 
-  for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
-    if((pte = walk(pagetable, a, 0)) == 0)
+  for (a = va; a < va + npages * PGSIZE; a += PGSIZE)
+  {
+    if ((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
-    if((*pte & PTE_V) == 0)
+    if ((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
-    if(PTE_FLAGS(*pte) == PTE_V)
+    if (PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-    if(do_free){
-      uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
+    uint64 pa = PTE2PA(*pte);
+    if (pa >= KERNBASE)
+    {
+      page_ref_cnt[(pa - KERNBASE) / PGSIZE] -= 1;
+    }
+    if (do_free)
+    {
+      if (page_ref_cnt[(pa - KERNBASE) / PGSIZE] == 1)
+      {
+        kfree((void *)pa);
+      }
     }
     *pte = 0;
   }
@@ -311,7 +323,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -319,14 +330,12 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    *pte = *pte & ~PTE_W; 
+    *pte = *pte | PTE_COW; 
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
+    if(mappages(new, i, PGSIZE, pa, flags) != 0) {
       goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
-    }
+    }  
   }
   return 0;
 
@@ -361,6 +370,32 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+    pte_t* pte = walk(pagetable,va0,0);
+    if (pte == 0) {
+      return -1;
+      }
+    if(*pte & PTE_COW) {
+      char *mem;
+      uint flags;
+      if (page_ref_cnt[(pa0 - KERNBASE) / PGSIZE] == 2)
+      {
+        *pte = *pte | PTE_W;
+        *pte = *pte & ~PTE_COW;
+      } else {
+      if ((mem = kalloc()) == 0) {
+          return -1;
+      } else {
+         page_ref_cnt[(pa0-KERNBASE) / PGSIZE] -= 1;
+          memmove(mem, (char *)pa0, PGSIZE);
+          *pte = *pte | PTE_W;
+          *pte = *pte & ~PTE_COW;
+          flags = PTE_FLAGS(*pte);
+          *pte = PA2PTE((uint64)mem) | flags;
+          page_ref_cnt[((uint64)mem - KERNBASE) / PGSIZE] += 1;
+          pa0 = (uint64)mem;
+        }
+      }
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;

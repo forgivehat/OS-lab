@@ -11,6 +11,7 @@ uint ticks;
 
 extern char trampoline[], uservec[], userret[];
 
+extern uint page_ref_cnt[];
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
@@ -65,7 +66,42 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } 
+  else if(r_scause() == 15) {
+    //  uint64 pg_fault_va = r_stval();
+    //  if(pg_fault_va >= p->sz) 
+    //   p->killed = 1;
+    // if (cow_fork(pg_fault_va) < 0)
+    //   p->killed = 1;
+    pte_t *pte;
+    uint64 addr = r_stval();
+    addr = PGROUNDDOWN(addr);
+    if ((pte = walk(p->pagetable, addr, 0)) == 0 || !(*pte & PTE_COW))
+    {
+      p->killed = 1;
+    } else {
+      char *mem;
+      uint64 pa = PTE2PA(*pte);
+      uint flags;
+      if (page_ref_cnt[(pa - KERNBASE) / PGSIZE] == 2)
+      {
+        *pte = *pte | PTE_W;
+        *pte = *pte & ~PTE_COW;
+      } else {
+      if ((mem = kalloc()) == 0) {
+        p->killed = 1;
+      } else {
+        page_ref_cnt[(pa - KERNBASE) / PGSIZE] -= 1;
+        memmove(mem, (char *)pa, PGSIZE);
+        *pte = *pte | PTE_W;
+        *pte = *pte & ~PTE_COW;
+        flags = PTE_FLAGS(*pte);
+        *pte = PA2PTE((uint64)mem) | flags;
+        page_ref_cnt[((uint64)mem - KERNBASE) / PGSIZE] += 1;
+      }
+    }
+  }
+ } else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -83,9 +119,42 @@ usertrap(void)
   usertrapret();
 }
 
-//
-// return to user space
-//
+// uint
+// cow_fork(uint64 pg_fault_va)
+// {
+//   uint64 align_va = PGROUNDDOWN(pg_fault_va);
+//   pagetable_t pagetable = myproc()->pagetable;
+//   pte_t* pte = walk(pagetable, align_va, 0);
+//   if(pte == 0) {
+//     return -1;
+//   }
+//   uint64 pa = PTE2PA(*pte);
+//   uint flags = PTE_FLAGS(*pte);
+//   if (!(flags & PTE_COW)) {
+//       return -1;
+//   }
+//   uint ref_cnt = page_ref_cnt[page_index(pa)];
+//   if(ref_cnt > 1) {
+//   char *mem = kalloc();
+//   if (mem == 0) {
+//      return -1;
+//   }
+//   memmove(mem, (char *)pa, PGSIZE);
+//   flags = flags | PTE_W;
+//   flags = flags & ~PTE_COW;
+//   if (mappages(pagetable, align_va, PGSIZE, (uint64)mem, flags) != 0)
+//   {
+//     kfree(mem);
+//     return -1;
+//   }
+//   page_ref_cnt[page_index(pa)] -= 1;
+//   } else {
+//     *pte = *pte & ~PTE_COW;
+//     *pte = *pte | PTE_W;
+//   }
+//   return 0;
+// }
+
 void
 usertrapret(void)
 {
