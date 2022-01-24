@@ -14,6 +14,7 @@ struct sock;
 #endif
 
 // bio.c
+struct buf*     loop_find(struct buf * replace_buf);
 void            binit(void);
 struct buf*     bread(uint, uint);
 void            brelse(struct buf*);
@@ -67,7 +68,7 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
-
+void            kfree_init(void *pa);
 // log.c
 void            initlog(int, struct superblock*);
 void            log_write(struct buf*);
