@@ -387,7 +387,7 @@ bmap(struct inode *ip, uint bn)
   }
   bn -= NDIRECT;
 
-  if(bn < NINDIRECT){
+  if(bn < NINDIRECT) {
     // Load indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
@@ -400,7 +400,31 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
+  bn -= NINDIRECT;
+  if (bn < NDUBINDIRECT)
+  {
+    if((addr = ip->addrs[NDIRECT + 1]) == 0) {
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+    }
+    uint indirect_index = bn / (NINDIRECT);
+    uint offset = bn % NINDIRECT;
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    if((addr = a[indirect_index]) == 0) {
+      a[indirect_index] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
 
+  bp = bread(ip->dev,addr);
+  a = (uint*)bp->data;
+  if((addr = a[offset]) == 0) {
+      a[offset] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+  brelse(bp);
+  return addr;
+  }
   panic("bmap: out of range");
 }
 
@@ -411,8 +435,10 @@ itrunc(struct inode *ip)
 {
   int i, j;
   struct buf *bp;
+  struct buf *indirect_bp;
   uint *a;
-
+  uint *b;
+  int indirect_index,offset;
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
       bfree(ip->dev, ip->addrs[i]);
@@ -432,6 +458,24 @@ itrunc(struct inode *ip)
     ip->addrs[NDIRECT] = 0;
   }
 
+  if(ip->addrs[NDIRECT + 1]) {
+      bp = bread(ip->dev, ip->addrs[NDIRECT + 1]);
+      a = (uint*)bp->data;
+    for(indirect_index = 0; indirect_index < NINDIRECT; indirect_index++) {
+      if(a[indirect_index]) {
+        indirect_bp = bread(ip->dev,a[indirect_index]);
+        b = (uint*)indirect_bp->data;
+        for(offset = 0; offset < NINDIRECT; offset++) {
+          if(b[offset]) {
+            bfree(ip->dev,b[offset]);
+          }
+        }
+        brelse(indirect_bp);
+        bfree(ip->dev,a[indirect_index]);
+      } 
+    }
+    brelse(bp);
+  }
   ip->size = 0;
   iupdate(ip);
 }
@@ -662,7 +706,7 @@ namex(char *path, int nameiparent, char *name)
 
 struct inode*
 namei(char *path)
-{
+{      
   char name[DIRSIZ];
   return namex(path, 0, name);
 }
