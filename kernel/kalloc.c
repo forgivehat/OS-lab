@@ -14,8 +14,7 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
-
-int page_ref_cnt[(PHYSTOP-KERNBASE) / PGSIZE];
+uint pg_ref_cnt[(PHYSTOP - KERNBASE) / PGSIZE];
 
 struct run {
   struct run *next;
@@ -25,6 +24,31 @@ struct {
   struct spinlock lock;
   struct run *freelist;
 } kmem;
+
+uint64
+ipage(uint64 pa)
+{
+  return (pa - KERNBASE) / PGSIZE;
+}
+
+void
+refcnt_incr_n(uint64 pa, int n)
+{
+  pg_ref_cnt[ipage(pa)] += n;
+}
+
+uint
+r_refcnt(uint64 pa) 
+{
+  return pg_ref_cnt[ipage(pa)];
+}
+
+void
+w_refcnt(uint64 pa,int n)
+{
+  pg_ref_cnt[ipage(pa)] = n;
+  
+}
 
 void
 kinit()
@@ -46,25 +70,26 @@ freerange(void *pa_start, void *pa_end)
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
-void kfree(void *pa)
+void
+kfree(void *pa)
 {
   struct run *r;
 
-  // if (page_ref_cnt[page_index((uint64)pa)] > 1)
-  // {
-  //   page_ref_cnt[page_index((uint64)pa)] -= 1;
-  //   return;
-  // }
+  
+    if(pg_ref_cnt[ipage((uint64)pa)] > 1) {
+      pg_ref_cnt[ipage((uint64)pa)] -= 1;
+      return;
+    }
 
-  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
- // page_ref_cnt[page_index((uint64)pa)] = 0;
+  pg_ref_cnt[ipage((uint64)pa)] = 0;
 
-  r = (struct run *)pa;
+  r = (struct run*)pa;
 
   acquire(&kmem.lock);
   r->next = kmem.freelist;
@@ -86,16 +111,9 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if (r)
-  {
-    memset((char *)r, 5, PGSIZE); // fill with junk
-  //  page_ref_cnt[page_index((uint64)r)] = 1;
-  }
-
+  if(r) 
+     memset((char*)r, 5, PGSIZE); // fill with junk
+   if(r)
+    refcnt_incr_n((uint64)r,1);
   return (void*)r;
 }
-
-// int page_index(uint64 pa) 
-// {
-//   return (pa - KERNBASE) / PGSIZE;
-// }

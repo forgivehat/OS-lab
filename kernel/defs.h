@@ -60,10 +60,13 @@ void            ramdiskintr(void);
 void            ramdiskrw(struct buf*);
 
 // kalloc.c
-
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+uint64          ipage(uint64 pa);
+void            refcnt_incr_n(uint64 pa, int n);
+uint            r_refcnt(uint64 pa);
+void            w_refcnt(uint64 pa,int n);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -146,7 +149,7 @@ void            trapinit(void);
 void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
-uint            cow_fork(uint64 pg_fault_va);
+uint            cow_clloc(uint64 va);
 
 // uart.c
 void            uartinit(void);
@@ -156,8 +159,6 @@ void            uartputc_sync(int);
 int             uartgetc(void);
 
 // vm.c
-pte_t *         walk(pagetable_t pagetable, uint64 va, int alloc);
-int             cow_mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm);
 void            kvminit(void);
 void            kvminithart(void);
 uint64          kvmpa(uint64);
