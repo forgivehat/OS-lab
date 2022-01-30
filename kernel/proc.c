@@ -30,7 +30,6 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
@@ -107,14 +106,6 @@ allocproc(void)
 found:
   p->pid = allocpid();
 
-  p->tick_cnt = 0;
-
-  // Allocate a trapframeSave page.
-  if((p->trapframe_saved = (struct trapframe *)kalloc()) == 0){
-    release(&p->lock);
-    return 0;
-  }
-  
   // Allocate a trapframe page.
 if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
@@ -146,9 +137,6 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->trapframe_saved)
-    kfree((void*)p->trapframe_saved);
-  p->trapframe_saved = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;

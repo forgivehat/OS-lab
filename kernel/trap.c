@@ -80,18 +80,29 @@ void usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if (which_dev == 2){
-    if(p->tick_cnt < p->interval || p->wait_return == 1) {
+  // if (which_dev == 2) {
+  //    p->tick_cnt++;
+  //   if(p->tick_cnt == p->interval && p->wait_return == 0) {
+  //      p->wait_return = 1;
+  //      p->tick_cnt = 0;
+  //      memmove(p->trapframe_saved,p->trapframe,512);
+  //    // *p->trapframe_saved = *p->trapframe;
+  //     p->trapframe->epc = p->handler;
+  //   }
+  //   yield(); 
+  // }
+  if(which_dev == 2){
       p->tick_cnt++;
-    } else {
-      p->tick_cnt = 0;
-      *p->trapframe_saved = *p->trapframe;
-      p->wait_return = 1;
-      p->trapframe->epc = p->handler;
-    }
-  yield();
+      if(p->interval == p->tick_cnt){
+        p->tick_cnt = 0;
+        if(p->trapframe_saved == 0){
+          p->trapframe_saved = kalloc();
+          memmove(p->trapframe_saved, p->trapframe, 512);
+          p->trapframe->epc = p->handler;
+        }
+      }
+      yield();
   }
-   
 
   usertrapret();
 }
