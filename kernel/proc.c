@@ -5,7 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-
+#include "fcntl.h"
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -268,7 +268,8 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
-
+  struct vma *nv;
+  struct vma *v;
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
@@ -299,6 +300,25 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
+
+
+for(int i = 0; i < NVMA; ++i)
+  {
+    v = &p->vma_list[i];
+    nv = &np->vma_list[i];
+    if(v->used)
+    {
+      nv->addr = v->addr;
+      nv->fd = v->fd;
+      nv->file = v->file;
+      nv->flag = v->flag;
+      nv->length = v->length;
+      nv->offset = v->offset;
+      nv->prot = v->prot;
+      nv->used = v->used;
+      filedup(nv->file);
+    }
+  }
 
   np->state = RUNNABLE;
 
@@ -340,9 +360,22 @@ void
 exit(int status)
 {
   struct proc *p = myproc();
-
+  struct vma* v;
   if(p == initproc)
     panic("init exiting");
+
+  for(int i = 0; i < NVMA; ++i)
+  {
+    v = &p->vma_list[i];
+    if(v->used)
+    {
+      if((v->flag & MAP_SHARED) && (v->prot & PROT_WRITE))
+        filewrite(v->file, v->addr, v->length);
+      fileclose(v->file);
+      uvmunmap(p->pagetable,v->addr,  v->length/PGSIZE, 1);
+      v->used = 0;
+    }
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
@@ -700,4 +733,21 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+struct vma *
+vma_alloc()
+{
+  struct proc *p = myproc();
+  struct vma *v;
+  for (int i = 0; i < NVMA; i++)
+  {
+    v = &p->vma_list[i];
+    if (v->used == 0)
+    {
+      v->used = 1;       
+      return v;
+    }
+  }
+  return 0;
 }

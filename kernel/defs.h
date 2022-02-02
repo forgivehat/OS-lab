@@ -82,6 +82,7 @@ void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
 
 // proc.c
+struct vma*     vma_alloc();
 int             cpuid(void);
 void            exit(int);
 int             fork(void);
@@ -146,6 +147,7 @@ void            trapinit(void);
 void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
+uint            mmap_alloc(uint64 pg_fault_va);
 
 // uart.c
 void            uartinit(void);

@@ -80,6 +80,20 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+#define NVMA 16
+
+struct vma {
+  uint64 addr;
+  uint64 length;
+  int prot;
+  int flag;
+  int fd;
+  struct file *file;
+  uint64 offset;
+  uint used;
+};
+
+
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
@@ -103,4 +117,5 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct vma vma_list[NVMA];
 };

@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "fcntl.h"
+#include "file.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -65,7 +69,13 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if(r_scause() == 13 || r_scause() == 15) {
+    uint64 pg_fault_va = r_stval();
+    if(mmap_alloc(pg_fault_va) != 0) {
+      p->killed = 1;
+    }
+  }
+   else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -81,6 +91,62 @@ usertrap(void)
     yield();
 
   usertrapret();
+}
+
+uint
+mmap_alloc(uint64 pg_fault_va)
+{
+  struct proc *p = myproc();
+  struct vma *v;
+  struct file* file;
+  int cnt = 0;
+  if (pg_fault_va >= p->sz)
+    return -1;
+  if (pg_fault_va < p->trapframe->sp)
+    return -1;
+  for (int i = 0; i < NVMA; i++)
+  {
+    v = &p->vma_list[i];
+    if (v->used == 1)
+    {
+      if (pg_fault_va >= v->addr && pg_fault_va < (v->addr + v->length))
+      { 
+        //printf("i:%d, v->length:%x\n",i,v->length);
+        uint flags = 0;
+        flags |= PTE_U;
+        if (v->prot & PROT_READ)
+          flags |= PTE_R;
+        if (v->prot & PROT_WRITE)
+          flags |= PTE_W;
+        if (v->prot & PROT_EXEC)
+          flags |= PTE_X;
+        char *mem = kalloc();
+        if (mem == 0)
+          return -1;
+        memset(mem, 0, PGSIZE);
+        uint64 align_va = PGROUNDDOWN(pg_fault_va);
+    //  printf("fault va:%p, align va:%p, v->addr:%p\nalign_va - v->addr: %p\n",pg_fault_va,align_va,v->addr,align_va - v->addr);
+        if (mappages(p->pagetable, align_va, PGSIZE, (uint64)mem, flags) != 0)
+        {
+          kfree(mem);
+          return -1;
+        }
+        file = v->file;
+        ilock(file->ip);
+        readi(file->ip, 0, (uint64)mem,(align_va - v->addr), PGSIZE);
+      //  printf("\n",align_va - v->addr);
+        iunlock(file->ip);
+        break;
+      }
+    }
+    cnt += 1;
+   // printf("trap cnt:%d\n",cnt);
+  }
+  if(cnt == NVMA)
+   {
+     return -1;
+   }  
+  return 0;
 }
 
 //

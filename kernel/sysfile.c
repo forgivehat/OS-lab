@@ -484,3 +484,82 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap()
+{
+  uint64 err_ret = 0xffffffffffffffff;
+  uint64 addr;
+  int length, prot, flag, fd, offset;
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flag) < 0 || argint(4, &fd) < 0 || argint(5, &offset) < 0)
+    return err_ret;
+  addr = 0;
+  offset = 0;
+  struct proc *p = myproc();
+  struct file *f = p->ofile[fd];
+  if ((prot & PROT_WRITE) && !f->writable && (flag & MAP_SHARED))
+  {
+    return 0xffffffffffffffff;
+  }
+  if ((prot & PROT_READ) && !f->readable)
+  {
+    return 0xffffffffffffffff;
+  }
+  struct vma *v = vma_alloc();
+  filedup(f);
+  v->file = f;
+  v->prot = prot;
+  v->flag = flag;
+  v->length = length;
+  v->offset = offset;
+  v->fd = fd;
+  v->addr = p->sz;
+  p->sz += v->length;
+//printf("sys_mmap addr:%p p->sz:%p\n",v->addr,p->sz);
+  return v->addr;
+return 0;
+}
+
+uint64
+sys_munmap()
+{
+  printf("sys_munmap\n");
+  uint64 addr;
+  int length;
+  int cnt = 0;
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0)
+    return -1;
+  struct proc *p = myproc();
+  struct vma *v;
+  for (int i = 0; i < NVMA; i++)
+  {
+    v = &p->vma_list[i];
+    if (v->used == 0)
+      continue;
+    if (addr >= v->addr && addr < v->addr + v->length)
+    {
+      printf("addr:%p, length:%x\nv->addr:%p, v->length:%x, v->addr + v->length:%x\n", addr, length, v->addr, v->length, v->addr + v->length);
+      if (length >= v->length)
+      {
+        length = v->length;
+      }
+      v->addr = v->addr + length;
+      v->length = v->length - length;
+      if ((v->prot & PROT_WRITE) && (v->flag & MAP_SHARED))
+      {
+        filewrite(v->file, addr, length);
+      }
+      uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+      if (v->length == 0)
+      {
+        fileclose(v->file);
+        v->used = 0;
+      }
+      break;
+    }
+    cnt += 1;
+  }
+  if (cnt == NVMA)
+    return -1;
+  return 0;
+}
