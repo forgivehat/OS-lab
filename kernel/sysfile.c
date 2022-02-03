@@ -517,7 +517,6 @@ sys_mmap()
   p->sz += v->length;
 //printf("sys_mmap addr:%p p->sz:%p\n",v->addr,p->sz);
   return v->addr;
-return 0;
 }
 
 uint64
