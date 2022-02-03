@@ -14,7 +14,10 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
-uint pg_ref_cnt[(PHYSTOP - KERNBASE) / PGSIZE];
+struct {
+  struct spinlock lock;
+  uint refCount[(PHYSTOP - KERNBASE) / PGSIZE];
+} ref_list;
 
 struct run {
   struct run *next;
@@ -25,6 +28,18 @@ struct {
   struct run *freelist;
 } kmem;
 
+void
+acquire_reflock()
+{
+  acquire(&ref_list.lock);
+}
+
+void
+release_reflock()
+{
+  release(&ref_list.lock);
+}
+
 uint64
 ipage(uint64 pa)
 {
@@ -34,20 +49,19 @@ ipage(uint64 pa)
 void
 refcnt_incr_n(uint64 pa, int n)
 {
-  pg_ref_cnt[ipage(pa)] += n;
+  ref_list.refCount[ipage(pa)] += n;
 }
 
 uint
 r_refcnt(uint64 pa) 
 {
-  return pg_ref_cnt[ipage(pa)];
+  return ref_list.refCount[ipage(pa)];
 }
 
 void
 w_refcnt(uint64 pa,int n)
 {
-  pg_ref_cnt[ipage(pa)] = n;
-  
+  ref_list.refCount[ipage(pa)] = n;
 }
 
 void
@@ -74,10 +88,10 @@ void
 kfree(void *pa)
 {
   struct run *r;
-
-  
-    if(pg_ref_cnt[ipage((uint64)pa)] > 1) {
-      pg_ref_cnt[ipage((uint64)pa)] -= 1;
+    acquire_reflock();
+    if(ref_list.refCount[ipage((uint64)pa)] > 1) {
+      ref_list.refCount[ipage((uint64)pa)] -= 1;
+      release_reflock();
       return;
     }
 
@@ -87,8 +101,9 @@ kfree(void *pa)
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
-  pg_ref_cnt[ipage((uint64)pa)] = 0;
+  ref_list.refCount[ipage((uint64)pa)] = 0;
 
+  release_reflock();
   r = (struct run*)pa;
 
   acquire(&kmem.lock);
@@ -113,7 +128,33 @@ kalloc(void)
 
   if(r) 
      memset((char*)r, 5, PGSIZE); // fill with junk
-   if(r)
-    refcnt_incr_n((uint64)r,1);
-  return (void*)r;
+  if (r)
+  {
+    acquire_reflock();
+    refcnt_incr_n((uint64)r, 1);
+    release_reflock();
+  }
+
+   return (void *)r;
+}
+
+void *
+kalloc_freelock(void)
+{
+  struct run *r;
+
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  if(r)
+    kmem.freelist = r->next;
+  release(&kmem.lock);
+
+  if(r) 
+     memset((char*)r, 5, PGSIZE); // fill with junk
+  if (r)
+  {
+  refcnt_incr_n((uint64)r, 1);
+  }
+
+   return (void *)r;
 }

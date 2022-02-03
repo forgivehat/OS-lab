@@ -16,7 +16,6 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
-extern uint pg_ref_cnt[];
 
 /*
  * create a direct-map page table for the kernel.
@@ -327,7 +326,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
+    acquire_reflock();
     refcnt_incr_n(pa,1);
+    release_reflock();
   }
   return 0;
 
@@ -336,44 +337,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }
 
-uint          
-cow_clloc(uint64 va)
-{
-  uint64 align_va = PGROUNDDOWN(va);
-  pagetable_t pagetable = myproc()->pagetable;
-  pte_t *pte = walk(pagetable, align_va, 0);
-  uint64 pa = PTE2PA(*pte);
-  uint flags = PTE_FLAGS(*pte);
-  if (!(flags & PTE_COW))
-  {
-    printf("not cow page\n");
-    return -1;
-  }
-  uint ref = r_refcnt(pa);
-  if (ref > 1)
-  {
-    flags |= PTE_W;
-    flags &= ~PTE_COW;
-    char *mem = kalloc();
-    if (mem == 0)
-    {
-      return -1;
-    }
-    memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(pagetable, align_va, PGSIZE, (uint64)mem, flags) != 0)
-    {
-      kfree(mem);
-      return -1;
-    }
-    refcnt_incr_n(pa, -1);
-  }
-  else
-  {
-    *pte &= ~PTE_COW;
-    *pte |= PTE_W;
-  }
-  return 0;
-}
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.

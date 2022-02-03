@@ -89,6 +89,48 @@ usertrap(void)
   usertrapret();
 }
 
+uint          
+cow_clloc(uint64 va)
+{
+  uint64 align_va = PGROUNDDOWN(va);
+  pagetable_t pagetable = myproc()->pagetable;
+  pte_t *pte = walk(pagetable, align_va, 0);
+  uint64 pa = PTE2PA(*pte);
+  uint flags = PTE_FLAGS(*pte);
+  if (!(flags & PTE_COW))
+  {
+    return -2;
+  }
+  acquire_reflock();
+  uint ref = r_refcnt(pa);
+  if (ref > 1)
+  {
+    flags |= PTE_W;
+    flags &= ~PTE_COW;
+    char *mem = kalloc_freelock();
+    if (mem == 0)
+    {
+      release_reflock();
+      return -1;
+    }
+    memmove(mem, (char *)pa, PGSIZE);
+    if (mappages(pagetable, align_va, PGSIZE, (uint64)mem, flags) != 0)
+    {
+      release_reflock();
+      kfree(mem);
+      return -1;
+    }
+    refcnt_incr_n(pa, -1);
+  }
+  else
+  {
+    *pte &= ~PTE_COW;
+    *pte |= PTE_W;
+  }
+  release_reflock();
+  return 0;
+}
+
 //
 // return to user space
 //
