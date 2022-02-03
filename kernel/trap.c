@@ -93,15 +93,14 @@ uint
 cow_clloc(uint64 va)
 {
   uint64 align_va = PGROUNDDOWN(va);
-  pagetable_t pagetable = myproc()->pagetable;
+  struct proc* p = myproc();
+  pagetable_t pagetable =p->pagetable;
   pte_t *pte = walk(pagetable, align_va, 0);
   uint64 pa = PTE2PA(*pte);
   uint flags = PTE_FLAGS(*pte);
-  if (!(flags & PTE_COW))
+  if(flags & PTE_COW) 
   {
-    return -2;
-  }
-  acquire_reflock();
+    acquire_reflock();
   uint ref = r_refcnt(pa);
   if (ref > 1)
   {
@@ -128,6 +127,7 @@ cow_clloc(uint64 va)
     *pte |= PTE_W;
   }
   release_reflock();
+  }
   return 0;
 }
 
