@@ -72,7 +72,7 @@ binit(void)
   for (int i = 0; i < NBUCKET; i++) {
     initlock(&hashtable[i].lock,"bcache.bucket");
     for(int j = 0; j < NBUF / NBUCKET; j++) {
-      
+      b->blockno = i;
       b->next = hashtable[i].head.next;
       hashtable[i].head.next = b;
       b++;
