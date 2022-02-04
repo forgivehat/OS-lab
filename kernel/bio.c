@@ -105,27 +105,27 @@ bget(uint dev, uint blockno)
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  uint min_time = (1 << 20);
-  struct buf *replace_buf = 0;
+  uint min_stamp = (1 << 20);
+  struct buf *lru_buf = 0;
   for (b = hashtable[index].head.next; b; b = b->next)
   {
-    if (b->refcnt == 0 && b->timestamp < min_time)
+    if (b->refcnt == 0 && b->timestamp < min_stamp)
     {
-      replace_buf = b;
-      min_time = b->timestamp;
+      lru_buf = b;
+      min_stamp = b->timestamp;
     }
   }
-  if (replace_buf)
+  if (lru_buf)
   {
     goto find;
   }
   //没在当前bucket里找到可以替换的buf块时，从其他bucket里找一块
   acquire(&bcache.lock);
-  replace_buf = loop_find(replace_buf);
-  if (replace_buf)
+  lru_buf = loop_find(lru_buf);
+  if (lru_buf)
   {
-    replace_buf->next = hashtable[index].head.next;
-    hashtable[index].head.next = replace_buf;
+    lru_buf->next = hashtable[index].head.next;
+    hashtable[index].head.next = lru_buf;
     release(&bcache.lock);
     goto find;
   }
@@ -135,39 +135,39 @@ bget(uint dev, uint blockno)
   }
 
 find:
-  replace_buf->dev = dev;
-  replace_buf->blockno = blockno;
-  replace_buf->valid = 0;
-  replace_buf->refcnt = 1;
+  lru_buf->dev = dev;
+  lru_buf->blockno = blockno;
+  lru_buf->valid = 0;
+  lru_buf->refcnt = 1;
   release(&hashtable[ihash(blockno)].lock);
-  acquiresleep(&replace_buf->lock);
-  return replace_buf;
+  acquiresleep(&lru_buf->lock);
+  return lru_buf;
 }
 
 struct buf*
-loop_find(struct buf * replace_buf)
+loop_find(struct buf * lru_buf)
 {
   struct buf *b;
-  uint min_time = 1 << 20;
+  uint min_stamp = 1 << 20;
   for (;;)
   {
     for (b = bcache.buf; b < bcache.buf + NBUF; b++)
     {
-      if (b->refcnt == 0 && b->timestamp < min_time)
+      if (b->refcnt == 0 && b->timestamp < min_stamp)
       {
-        replace_buf = b;
-        min_time = b->timestamp;
+        lru_buf = b;
+        min_stamp = b->timestamp;
       }
     }
-    if(replace_buf) {
-      int rbuf_index = ihash(replace_buf->blockno);
+    if(lru_buf) {
+      int rbuf_index = ihash(lru_buf->blockno);
       acquire(&hashtable[rbuf_index].lock);
-      if(replace_buf->refcnt != 0) {
+      if(lru_buf->refcnt != 0) {
         release(&hashtable[rbuf_index].lock);
       } else {
       struct buf *pre = &hashtable[rbuf_index].head;
       struct buf *p = hashtable[rbuf_index].head.next;
-       while (p != replace_buf) {
+       while (p != lru_buf) {
       pre = pre->next;
       p = p->next;
     }
@@ -177,7 +177,7 @@ loop_find(struct buf * replace_buf)
       }
     }
   }
-  return replace_buf;
+  return lru_buf;
 }
 
 // Return a locked buf with the contents of the indicated block.
