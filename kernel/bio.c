@@ -159,20 +159,25 @@ loop_find(struct buf * lru_buf)
         min_stamp = b->timestamp;
       }
     }
-    if(lru_buf) {
+    if (lru_buf)
+    {
       int rbuf_index = ihash(lru_buf->blockno);
       acquire(&hashtable[rbuf_index].lock);
-      if(lru_buf->refcnt != 0) {
+      if (lru_buf->refcnt != 0)
+      {
         release(&hashtable[rbuf_index].lock);
-      } else {
-      struct buf *pre = &hashtable[rbuf_index].head;
-      struct buf *p = hashtable[rbuf_index].head.next;
-       while (p != lru_buf) {
-      pre = pre->next;
-      p = p->next;
-    }
-      pre->next = p->next;
-      release(&hashtable[rbuf_index].lock);
+      }
+      else
+      {
+        struct buf *pre = &hashtable[rbuf_index].head;
+        struct buf *p = hashtable[rbuf_index].head.next;
+        while (p != lru_buf)
+        {
+          pre = pre->next;
+          p = p->next;
+        }
+        pre->next = p->next;
+        release(&hashtable[rbuf_index].lock);
         break;
       }
     }
