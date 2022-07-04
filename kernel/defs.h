@@ -13,6 +13,9 @@ struct mbuf;
 struct sock;
 #endif
 
+int copyin_new(pagetable_t, char *, uint64, uint64);
+int copyinstr_new(pagetable_t, char *, uint64, uint64);
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -86,6 +89,8 @@ void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
 
 // proc.c
+void            proc_free_kernel_pagetable(pagetable_t, uint64, uint64);
+
 int             cpuid(void);
 void            exit(int);
 int             fork(void);
@@ -158,6 +163,11 @@ void            uartputc_sync(int);
 int             uartgetc(void);
 
 // vm.c
+pte_t *         walk(pagetable_t, uint64, int);
+pagetable_t     ukvminit();
+void            recursive_print(pagetable_t, int);
+void            vmprint(pagetable_t);
+
 void            kvminit(void);
 void            kvminithart(void);
 uint64          kvmpa(uint64);
