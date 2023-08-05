@@ -4,7 +4,7 @@ xv6内核lab
 
 部分实验的总结博客如下：
 
-[xv6进程调度细节](https://forgivehat.github.io/2023/05/08/xv6调度细节/)
+[xv6进程调度细节](https://forgivehat.github.io/2023/05/08/xv6%E8%BF%9B%E7%A8%8B%E8%B0%83%E5%BA%A6%E7%BB%86%E8%8A%82/)
 
 [lab-8-lock](https://forgivehat.github.io/2022/02/21/lab-8-lock/)
 
